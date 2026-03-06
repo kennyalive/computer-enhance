@@ -36,24 +36,6 @@ struct Bytes
     }
 };
 
-Bytes read_binary_file(const char* file_name)
-{
-    FILE* f = fopen(file_name, "rb");
-    if (!f) {
-        return {};
-    }
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    Bytes bytes(file_size);
-    if (fread(bytes.data, 1, file_size, f) != file_size) {
-        fclose(f);
-        return {};
-    }
-    fclose(f);
-    return bytes;
-}
-
 struct Fetcher
 {
     bool has_bytes() const
@@ -97,6 +79,22 @@ const char* decode_register(uint8_t reg, bool w)
     return register_names[reg][w];
 }
 
+const char* get_effective_address_formula(uint8_t RM)
+{
+    assert(RM < 8);
+    static const char* effective_address_str[8] = {
+        "bx + si",
+        "bx + di",
+        "bp + si",
+        "bp + di",
+        "si",
+        "di",
+        "bp",
+        "bx"
+    };
+    return effective_address_str[RM];
+}
+
 bool decode_mov(Fetcher& fetcher)
 {
     uint8_t bytes[2];
@@ -107,14 +105,58 @@ bool decode_mov(Fetcher& fetcher)
     const uint8_t RM = bytes[1] & 7;
     const bool D = (bytes[0] >> 1) & 1;
     const bool W = bytes[0] & 1;
-    if (MOD != 3) {
-        return false;;
+
+    if (MOD == 3) { // mov reg, reg
+        const uint8_t dst = D ? REG : RM;
+        const char* dst_reg_name = decode_register(dst, W);
+        const uint8_t src = D ? RM : REG;
+        const char* src_reg_name = decode_register(src, W);
+        printf("mov %s, %s\n", dst_reg_name, src_reg_name);
     }
-    const uint8_t dst = D ? REG : RM;
-    const char* dst_reg_name = decode_register(dst, W);
-    const uint8_t src = D ? RM : REG;
-    const char* src_reg_name = decode_register(src, W);
-    printf("mov %s, %s\n", dst_reg_name, src_reg_name);
+    else {
+        bool direct_address = false;
+        bool has_displacement = false;
+        uint16_t displacement = 0;
+        if (MOD == 0) {
+            if (RM == 0b110) {
+                displacement = fetcher.fetch() | (fetcher.fetch() << 8);
+                direct_address = true;
+                has_displacement = true;
+            }
+        }
+        else if (MOD == 1) {
+            displacement = fetcher.fetch();
+            has_displacement = true;
+        }
+        else {
+            assert(MOD == 2);
+            displacement = fetcher.fetch() | (fetcher.fetch() << 8);
+            has_displacement = true;
+        }
+        if (direct_address) {
+            return false;
+        }
+        const char* reg_name = decode_register(REG, W);
+        const char* effective_address_formula = get_effective_address_formula(RM);
+        char displacement_str[16];
+        snprintf(displacement_str, 16, "%u", displacement);
+        if (D) {
+            printf("mov %s, [%s%s%s]\n",
+                reg_name,
+                effective_address_formula,
+                has_displacement ? " + " : "",
+                has_displacement ? displacement_str : ""
+            );
+        }
+        else {
+            printf("mov [%s%s%s], %s\n",
+                effective_address_formula,
+                has_displacement ? " + " : "",
+                has_displacement ? displacement_str : "",
+                reg_name
+            );
+        }
+    }
     return true;
 }
 
@@ -123,7 +165,6 @@ bool decode_immediate_mov(Fetcher& fetcher)
     const uint8_t byte0 = fetcher.fetch();
 
     const bool W = (byte0 >> 3) & 1;
-
     const uint8_t REG = byte0 & 7;
     const char* reg_name = decode_register(REG, W);
 
@@ -162,6 +203,24 @@ bool decode(Fetcher& fetcher)
         return decode_immediate_mov(fetcher);
     }
     return false;
+}
+
+Bytes read_binary_file(const char* file_name)
+{
+    FILE* f = fopen(file_name, "rb");
+    if (!f) {
+        return {};
+    }
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    Bytes bytes(file_size);
+    if (fread(bytes.data, 1, file_size, f) != file_size) {
+        fclose(f);
+        return {};
+    }
+    fclose(f);
+    return bytes;
 }
 
 int main(int argc, char** argv)
