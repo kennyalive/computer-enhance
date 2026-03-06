@@ -5,6 +5,8 @@ VisualStudioVersion = 17.11.35312.102
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode", "001-decode\decode.vcxproj", "{3A3C6C79-8E66-46C2-9438-84B053BCCEC8}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode2", "002-decode2\decode2.vcxproj", "{C933342F-1C7D-4A86-8F9C-EBE040B99AC0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,10 @@ Global
 		{3A3C6C79-8E66-46C2-9438-84B053BCCEC8}.Debug|x64.Build.0 = Debug|x64
 		{3A3C6C79-8E66-46C2-9438-84B053BCCEC8}.Release|x64.ActiveCfg = Release|x64
 		{3A3C6C79-8E66-46C2-9438-84B053BCCEC8}.Release|x64.Build.0 = Release|x64
+		{C933342F-1C7D-4A86-8F9C-EBE040B99AC0}.Debug|x64.ActiveCfg = Debug|x64
+		{C933342F-1C7D-4A86-8F9C-EBE040B99AC0}.Debug|x64.Build.0 = Debug|x64
+		{C933342F-1C7D-4A86-8F9C-EBE040B99AC0}.Release|x64.ActiveCfg = Release|x64
+		{C933342F-1C7D-4A86-8F9C-EBE040B99AC0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
