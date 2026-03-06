@@ -1,20 +1,52 @@
 #include <cassert>
-#include <cstdio>
 #include <cstdint>
-#include <string>
-#include <vector>
+#include <cstdio>
 
-std::vector<uint8_t> read_binary_file(const std::string& file_name)
+struct Bytes
 {
-    FILE* f = fopen(file_name.c_str(), "rb");
+    uint8_t* data = nullptr;
+    size_t count = 0;
+
+    Bytes() = default;
+    Bytes(size_t size)
+        : data(new uint8_t[size])
+        , count(size)
+    {}
+    Bytes(Bytes&& other) noexcept
+    {
+        *this = static_cast<Bytes&&>(other);
+    }
+    ~Bytes()
+    {
+        delete[] data;
+    }
+    Bytes& operator=(Bytes&& other) noexcept
+    {
+        delete[] data;
+        data = other.data;
+        count = other.count;
+        other.data = nullptr;
+        other.count = 0;
+        return *this;
+    }
+    uint8_t operator[](size_t index) const
+    {
+        assert(index < count);
+        return data[index];
+    }
+};
+
+Bytes read_binary_file(const char* file_name)
+{
+    FILE* f = fopen(file_name, "rb");
     if (!f) {
         return {};
     }
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    std::vector<uint8_t> bytes(file_size);
-    if (fread(bytes.data(), 1, file_size, f) != file_size) {
+    Bytes bytes(file_size);
+    if (fread(bytes.data, 1, file_size, f) != file_size) {
         fclose(f);
         return {};
     }
@@ -22,11 +54,11 @@ std::vector<uint8_t> read_binary_file(const std::string& file_name)
     return bytes;
 }
 
-struct Byte_Fetcher
+struct Fetcher
 {
     bool has_bytes() const
     {
-        return current_byte < bytes.size();
+        return current_byte < bytes.count;
     }
     uint8_t get_current_byte() const
     {
@@ -34,18 +66,18 @@ struct Byte_Fetcher
     }
     uint8_t fetch()
     {
-        assert(current_byte != bytes.size());
+        assert(current_byte != bytes.count);
         return bytes[current_byte++];
     }
     void fetch(uint8_t* buffer, int byte_count)
     {
-        assert(current_byte + byte_count <= bytes.size());
+        assert(current_byte + byte_count <= bytes.count);
         for (int i = 0; i < byte_count; i++) {
             buffer[i] = bytes[current_byte + i];
         }
         current_byte += byte_count;
     }
-    std::vector<uint8_t> bytes;
+    Bytes bytes;
     size_t current_byte = 0;
 };
 
@@ -65,7 +97,7 @@ const char* decode_register(uint8_t reg, bool w)
     return register_names[reg][w];
 }
 
-bool decode_mov(Byte_Fetcher& fetcher)
+bool decode_mov(Fetcher& fetcher)
 {
     uint8_t bytes[2];
     fetcher.fetch(bytes, 2);
@@ -86,7 +118,7 @@ bool decode_mov(Byte_Fetcher& fetcher)
     return true;
 }
 
-bool decode_immediate_mov(Byte_Fetcher& fetcher)
+bool decode_immediate_mov(Fetcher& fetcher)
 {
     const uint8_t byte0 = fetcher.fetch();
 
@@ -107,7 +139,7 @@ bool decode_immediate_mov(Byte_Fetcher& fetcher)
     return true;
 }
 
-bool decode(Byte_Fetcher& byte_fetcher)
+bool decode(Fetcher& fetcher)
 {
     struct Opcode_Info {
         uint8_t opcode;
@@ -121,13 +153,13 @@ bool decode(Byte_Fetcher& byte_fetcher)
         return (byte0 >> (8 - opcode_info.opcode_bit_count)) == opcode_info.opcode;
     };
 
-    const uint8_t byte0 = byte_fetcher.get_current_byte();
+    const uint8_t byte0 = fetcher.get_current_byte();
 
     if (test_opcode(byte0, move_opcode)) {
-        return decode_mov(byte_fetcher);
+        return decode_mov(fetcher);
     }
     else if (test_opcode(byte0, immediate_move_opcode)) {
-        return decode_immediate_mov(byte_fetcher);
+        return decode_immediate_mov(fetcher);
     }
     return false;
 }
@@ -139,10 +171,10 @@ int main(int argc, char** argv)
         return 0;
     }
     printf("bits 16\n");
-    Byte_Fetcher byte_fetcher;
-    byte_fetcher.bytes = read_binary_file(argv[1]);
-    while (byte_fetcher.has_bytes()) {
-        if (!decode(byte_fetcher)) {
+    Fetcher fetcher;
+    fetcher.bytes = read_binary_file(argv[1]);
+    while (fetcher.has_bytes()) {
+        if (!decode(fetcher)) {
             // Stop decoding if find something we don't support
             break; 
         }
