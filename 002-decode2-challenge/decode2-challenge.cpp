@@ -3,6 +3,38 @@
 #include <cstdio>
 #include <cstring>
 
+struct String
+{
+    char data[32] = {};
+    int length = 0;
+    String(const char* str)
+    {
+        append(str);
+    }
+    String(uint32_t x)
+    {
+        append(x);
+    }
+    void append(const char* str, int str_len)
+    {
+        assert(strlen(str) == str_len);
+        length += str_len;
+        assert(length < 32);
+        strcat(data, str);
+    }
+    void append(const char* str)
+    {
+        int n = (int)strlen(str);
+        append(str, n);
+    }
+    void append(uint32_t x)
+    {
+        char s[16];
+        int n = snprintf(s, 16, "%u", x);
+        append(s, n);
+    }
+};
+
 struct Bytes
 {
     uint8_t* data = nullptr;
@@ -37,38 +69,6 @@ struct Bytes
     }
 };
 
-struct String
-{
-    char data[32] = {};
-    int length = 0;
-    String(const char* str)
-    { 
-        append(str);
-    }
-    String(uint32_t x)
-    {
-        append(x);
-    }
-    void append(const char* str, int str_len)
-    {
-        assert(strlen(str) == str_len);
-        length += str_len;
-        assert(length < 32);
-        strcat(data, str);
-    }
-    void append(const char* str)
-    {
-        int n = (int)strlen(str);
-        append(str, n);
-    }
-    void append(uint32_t x)
-    {
-        char s[16];
-        int n = snprintf(s, 16, "%u", x);
-        append(s, n);
-    }
-};
-
 struct Fetcher
 {
     bool has_bytes() const
@@ -77,20 +77,13 @@ struct Fetcher
     }
     uint8_t get_current_byte() const
     {
+        assert(has_bytes());
         return bytes[current_byte];
     }
-    uint8_t fetch()
+    uint8_t fetch_byte()
     {
         assert(current_byte != bytes.count);
         return bytes[current_byte++];
-    }
-    void fetch(uint8_t* buffer, int byte_count)
-    {
-        assert(current_byte + byte_count <= bytes.count);
-        for (int i = 0; i < byte_count; i++) {
-            buffer[i] = bytes[current_byte + i];
-        }
-        current_byte += byte_count;
     }
     uint16_t fetch_word()
     {
@@ -141,16 +134,16 @@ String decode_effective_address(uint8_t MOD, uint8_t RM, Fetcher& fetcher)
     assert(RM < 8);
 
     if (MOD == 0 && RM == 0b110) { // direct access
-        const uint32_t displacement = fetcher.fetch() | (fetcher.fetch() << 8);
+        const uint16_t displacement = fetcher.fetch_word();
         return String(displacement);
     }
     int32_t displacement = 0;
     if (MOD == 1) {
         // single byte displacement is signed value: [-128..127]
-        displacement = static_cast<int8_t>(fetcher.fetch());
+        displacement = static_cast<int8_t>(fetcher.fetch_byte());
     }
     else if (MOD == 2) {
-        displacement = fetcher.fetch() | (fetcher.fetch() << 8);
+        displacement = fetcher.fetch_word();
     }
     String ea_str(get_effective_address_formula(RM));
     if (displacement < 0) {
@@ -164,16 +157,15 @@ String decode_effective_address(uint8_t MOD, uint8_t RM, Fetcher& fetcher)
     return ea_str;
 }
 
-bool decode_move(Fetcher& fetcher)
+bool decode_move_reg_mr(Fetcher& fetcher)
 {
-    uint8_t bytes[2];
-    fetcher.fetch(bytes, 2);
-
-    const uint8_t MOD = bytes[1] >> 6;
-    const uint8_t REG = (bytes[1] >> 3) & 7;
-    const uint8_t RM = bytes[1] & 7;
-    const bool D = (bytes[0] >> 1) & 1;
-    const bool W = bytes[0] & 1;
+    const uint8_t byte0 = fetcher.fetch_byte();
+    const uint8_t byte1 = fetcher.fetch_byte();
+    const bool D = (byte0 >> 1) & 1;
+    const bool W = byte0 & 1;
+    const uint8_t MOD = byte1 >> 6;
+    const uint8_t REG = (byte1 >> 3) & 7;
+    const uint8_t RM = byte1 & 7;
 
     if (MOD == 3) { // mov reg, reg
         const uint8_t dst = D ? REG : RM;
@@ -197,41 +189,34 @@ bool decode_move(Fetcher& fetcher)
 
 bool decode_move_imm_to_reg(Fetcher& fetcher)
 {
-    const uint8_t byte0 = fetcher.fetch();
+    const uint8_t byte0 = fetcher.fetch_byte();
     const bool W = (byte0 >> 3) & 1;
     const uint8_t REG = byte0 & 7;
     const char* reg_name = decode_register(REG, W);
-
-    if (W) {
-        uint8_t data[2];
-        fetcher.fetch(data, 2);
-        printf("mov %s, %u\n", reg_name, (data[0] | data[1] << 8));
-    }
-    else {
-        const uint8_t data = fetcher.fetch();
-        printf("mov %s, %u\n", reg_name, data);
-    }
+    const uint32_t imm = W ? fetcher.fetch_word() : fetcher.fetch_byte();
+    printf("mov %s, %u\n", reg_name, imm);
     return true;
 }
 
 bool decode_move_imm_to_rm(Fetcher& fetcher)
 {
-    uint8_t bytes[2];
-    fetcher.fetch(bytes, 2);
-    const bool W = bytes[0] & 1;
-    const uint8_t MOD = bytes[1] >> 6;
-    const uint8_t RM = bytes[1] & 7;
+    const uint8_t byte0 = fetcher.fetch_byte();
+    const uint8_t byte1 = fetcher.fetch_byte();
+    const bool W = byte0 & 1;
+    const uint8_t MOD = byte1 >> 6;
+    const uint8_t RM = byte1 & 7;
+
     if (MOD == 3) {
         return false;
     }
     else {
         String effective_address = decode_effective_address(MOD, RM, fetcher);
         if (W) {
-            const uint32_t imm = fetcher.fetch_word();
+            const uint16_t imm = fetcher.fetch_word();
             printf("mov [%s], word %u\n", effective_address.data, imm);
         }
         else {
-            const uint32_t imm = fetcher.fetch();
+            const uint8_t imm = fetcher.fetch_byte();
             printf("mov [%s], byte %u\n", effective_address.data, imm);
         }
     }
@@ -240,7 +225,7 @@ bool decode_move_imm_to_rm(Fetcher& fetcher)
 
 bool decode_move_mem_to_accum(Fetcher& fetcher)
 {
-    const uint8_t byte0 = fetcher.fetch();
+    const uint8_t byte0 = fetcher.fetch_byte();
     const uint16_t address = fetcher.fetch_word();
     const bool W = byte0 & 1;
     printf("mov %s, [%u]\n", W ? "ax" : "al", address);
@@ -249,7 +234,7 @@ bool decode_move_mem_to_accum(Fetcher& fetcher)
 
 bool decode_move_accum_to_mem(Fetcher& fetcher)
 {
-    const uint8_t byte0 = fetcher.fetch();
+    const uint8_t byte0 = fetcher.fetch_byte();
     const uint16_t address = fetcher.fetch_word();
     const bool W = byte0 & 1;
     printf("mov [%u], %s\n", address, W ? "ax" : "al");
@@ -265,7 +250,7 @@ bool decode(Fetcher& fetcher)
         Decoder decoder;
     };
     static const Opcode_Info opcode_infos[] = {
-        {0b100010'00, uint8_t(~0x3), decode_move},
+        {0b100010'00, uint8_t(~0x3), decode_move_reg_mr},
         {0b1011'0000, uint8_t(~0xf), decode_move_imm_to_reg},
         {0b1100011'0, uint8_t(~0x1), decode_move_imm_to_rm},
         {0b1010000'0, uint8_t(~0x1), decode_move_mem_to_accum},
