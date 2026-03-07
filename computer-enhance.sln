@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode2", "002-decode2\deco
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode2-challenge", "002-decode2-challenge\decode2-challenge.vcxproj", "{085F36D4-AE0E-4072-9AFB-BEFA396C373D}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode3", "003-decode3\decode3.vcxproj", "{F47A4ABD-E44D-4609-B475-38134CDC65F0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +29,10 @@ Global
 		{085F36D4-AE0E-4072-9AFB-BEFA396C373D}.Debug|x64.Build.0 = Debug|x64
 		{085F36D4-AE0E-4072-9AFB-BEFA396C373D}.Release|x64.ActiveCfg = Release|x64
 		{085F36D4-AE0E-4072-9AFB-BEFA396C373D}.Release|x64.Build.0 = Release|x64
+		{F47A4ABD-E44D-4609-B475-38134CDC65F0}.Debug|x64.ActiveCfg = Debug|x64
+		{F47A4ABD-E44D-4609-B475-38134CDC65F0}.Debug|x64.Build.0 = Debug|x64
+		{F47A4ABD-E44D-4609-B475-38134CDC65F0}.Release|x64.ActiveCfg = Release|x64
+		{F47A4ABD-E44D-4609-B475-38134CDC65F0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
