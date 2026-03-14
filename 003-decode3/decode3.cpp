@@ -132,6 +132,22 @@ const char* get_effective_address_formula(uint8_t RM)
     return effective_address_str[RM];
 }
 
+const char* decode_imm_to_rm_opcode_name(uint8_t byte1)
+{
+    static const char* opcode_names[8] = {
+        "add",
+        "or",
+        "adc",
+        "sbb",
+        "and",
+        "sub",
+        nullptr,
+        "cmp"
+    };
+    uint8_t k = (byte1 >> 3) & 7;
+    return opcode_names[k];
+}
+
 String decode_effective_address(uint8_t MOD, uint8_t RM, Fetcher& fetcher)
 {
     assert(MOD < 3);
@@ -200,6 +216,10 @@ bool decode_imm_to_rm(Fetcher& fetcher, bool has_S, const char* opcode_name)
     const uint8_t MOD = byte1 >> 6;
     const uint8_t RM = byte1 & 7;
 
+    if (opcode_name == nullptr) {
+        opcode_name = decode_imm_to_rm_opcode_name(byte1);
+    }
+
     if (MOD == 3) {
         const char* reg_name = decode_register(RM, W);
         int32_t imm;
@@ -224,6 +244,11 @@ bool decode_imm_to_rm(Fetcher& fetcher, bool has_S, const char* opcode_name)
         }
     }
     return true;
+}
+
+bool decode_imm_to_rm(Fetcher& fetcher)
+{
+    return decode_imm_to_rm(fetcher, true, nullptr);
 }
 
 bool decode_move_reg_mr(Fetcher& fetcher)
@@ -275,13 +300,28 @@ bool decode_add_imm_to_rm(Fetcher& fetcher)
     return decode_imm_to_rm(fetcher, true, "add");
 }
 
-bool decode_add_imm_to_accum(Fetcher& fetcher)
+bool decode_imm_accum(Fetcher& fetcher, const char* opcode_name)
 {
     const uint8_t byte0 = fetcher.fetch_byte();
     const bool W = byte0 & 1;
     const int32_t imm = fetcher.fetch_byte_or_word_imm(W);
-    printf("add %s, %d\n", W ? "ax" : "al", imm);
+    printf("%s %s, %d\n", opcode_name, W ? "ax" : "al", imm);
     return true;
+}
+
+bool decode_add_imm_to_accum(Fetcher& fetcher)
+{
+    return decode_imm_accum(fetcher, "add");
+}
+
+bool decode_sub_reg_mr(Fetcher& fetcher)
+{
+    return decode_reg_mr(fetcher, "sub");
+}
+
+bool decode_sub_imm_from_accum(Fetcher& fetcher)
+{
+    return decode_imm_accum(fetcher, "sub");
 }
 
 bool decode(Fetcher& fetcher)
@@ -293,14 +333,16 @@ bool decode(Fetcher& fetcher)
         Decoder decoder;
     };
     static const Opcode_Info opcode_infos[] = {
+        {0b100000'00, uint8_t(~0x3), decode_imm_to_rm},
         {0b100010'00, uint8_t(~0x3), decode_move_reg_mr},
         {0b1011'0000, uint8_t(~0xf), decode_move_imm_to_reg},
         {0b1100011'0, uint8_t(~0x1), decode_move_imm_to_rm},
         {0b1010000'0, uint8_t(~0x1), decode_move_mem_to_accum},
         {0b1010001'0, uint8_t(~0x1), decode_move_accum_to_mem},
         {0b000000'00, uint8_t(~0x3), decode_add_reg_mr},
-        {0b100000'00, uint8_t(~0x3), decode_add_imm_to_rm},
         {0b0000010'0, uint8_t(~0x1), decode_add_imm_to_accum},
+        {0b001010'00, uint8_t(~0x3), decode_sub_reg_mr},
+        {0b0010110'0, uint8_t(~0x1), decode_sub_imm_from_accum},
     };
     const uint8_t byte0 = fetcher.get_current_byte();
     Decoder decoder = nullptr;
