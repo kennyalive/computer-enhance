@@ -324,6 +324,16 @@ bool decode_sub_imm_from_accum(Fetcher& fetcher)
     return decode_imm_accum(fetcher, "sub");
 }
 
+bool decode_cmp_reg_mr(Fetcher& fetcher)
+{
+    return decode_reg_mr(fetcher, "cmp");
+}
+
+bool decode_cmp_imm_accum(Fetcher& fetcher)
+{
+    return decode_imm_accum(fetcher, "cmp");
+}
+
 bool decode(Fetcher& fetcher)
 {
     using Decoder = bool(*)(Fetcher&);
@@ -343,6 +353,8 @@ bool decode(Fetcher& fetcher)
         {0b0000010'0, uint8_t(~0x1), decode_add_imm_to_accum},
         {0b001010'00, uint8_t(~0x3), decode_sub_reg_mr},
         {0b0010110'0, uint8_t(~0x1), decode_sub_imm_from_accum},
+        {0b001110'00, uint8_t(~0x3), decode_cmp_reg_mr},
+        {0b0011110'0, uint8_t(~0x1), decode_cmp_imm_accum},
     };
     const uint8_t byte0 = fetcher.get_current_byte();
     Decoder decoder = nullptr;
