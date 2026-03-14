@@ -92,6 +92,10 @@ struct Fetcher
         current_byte += 2;
         return word;
     }
+    int32_t fetch_byte_or_word_imm(bool W)
+    {
+        return W ? fetch_word() : static_cast<int8_t>(fetch_byte());
+    }
     Bytes bytes;
     size_t current_byte = 0;
 };
@@ -157,7 +161,7 @@ String decode_effective_address(uint8_t MOD, uint8_t RM, Fetcher& fetcher)
     return ea_str;
 }
 
-bool decode_move_reg_mr(Fetcher& fetcher)
+bool decode_reg_mr(Fetcher& fetcher, const char* opcode_name)
 {
     const uint8_t byte0 = fetcher.fetch_byte();
     const uint8_t byte1 = fetcher.fetch_byte();
@@ -172,19 +176,59 @@ bool decode_move_reg_mr(Fetcher& fetcher)
         const char* dst_reg_name = decode_register(dst, W);
         const uint8_t src = D ? RM : REG;
         const char* src_reg_name = decode_register(src, W);
-        printf("mov %s, %s\n", dst_reg_name, src_reg_name);
+        printf("%s %s, %s\n", opcode_name, dst_reg_name, src_reg_name);
     }
     else {
         const char* reg_name = decode_register(REG, W);
         String effective_address = decode_effective_address(MOD, RM, fetcher);
         if (D) {
-            printf("mov %s, [%s]\n", reg_name, effective_address.data);
+            printf("%s %s, [%s]\n", opcode_name, reg_name, effective_address.data);
         }
         else {
-            printf("mov [%s], %s\n", effective_address.data, reg_name);
+            printf("%s [%s], %s\n", opcode_name, effective_address.data, reg_name);
         }
     }
     return true;
+}
+
+bool decode_imm_to_rm(Fetcher& fetcher, bool has_S, const char* opcode_name)
+{
+    const uint8_t byte0 = fetcher.fetch_byte();
+    const uint8_t byte1 = fetcher.fetch_byte();
+    const bool W = byte0 & 1;
+    const bool S = has_S && (byte0 & 2);
+    const uint8_t MOD = byte1 >> 6;
+    const uint8_t RM = byte1 & 7;
+
+    if (MOD == 3) {
+        const char* reg_name = decode_register(RM, W);
+        int32_t imm;
+        if (W) {
+            imm = S ? static_cast<int8_t>(fetcher.fetch_byte()) : fetcher.fetch_word();
+        }
+        else {
+            imm = fetcher.fetch_byte();
+
+        }
+        printf("%s %s, %d\n", opcode_name, reg_name, imm);
+    }
+    else {
+        String effective_address = decode_effective_address(MOD, RM, fetcher);
+        if (W) {
+            const uint16_t imm = S ? static_cast<int8_t>(fetcher.fetch_byte()) : fetcher.fetch_word();
+            printf("%s [%s], word %u\n", opcode_name, effective_address.data, imm);
+        }
+        else {
+            const uint8_t imm = fetcher.fetch_byte();
+            printf("%s byte [%s], %u\n", opcode_name, effective_address.data, imm);
+        }
+    }
+    return true;
+}
+
+bool decode_move_reg_mr(Fetcher& fetcher)
+{
+    return decode_reg_mr(fetcher, "mov");
 }
 
 bool decode_move_imm_to_reg(Fetcher& fetcher)
@@ -200,27 +244,7 @@ bool decode_move_imm_to_reg(Fetcher& fetcher)
 
 bool decode_move_imm_to_rm(Fetcher& fetcher)
 {
-    const uint8_t byte0 = fetcher.fetch_byte();
-    const uint8_t byte1 = fetcher.fetch_byte();
-    const bool W = byte0 & 1;
-    const uint8_t MOD = byte1 >> 6;
-    const uint8_t RM = byte1 & 7;
-
-    if (MOD == 3) {
-        return false;
-    }
-    else {
-        String effective_address = decode_effective_address(MOD, RM, fetcher);
-        if (W) {
-            const uint16_t imm = fetcher.fetch_word();
-            printf("mov [%s], word %u\n", effective_address.data, imm);
-        }
-        else {
-            const uint8_t imm = fetcher.fetch_byte();
-            printf("mov [%s], byte %u\n", effective_address.data, imm);
-        }
-    }
-    return true;
+    return decode_imm_to_rm(fetcher, false, "mov");
 }
 
 bool decode_move_mem_to_accum(Fetcher& fetcher)
@@ -241,6 +265,25 @@ bool decode_move_accum_to_mem(Fetcher& fetcher)
     return true;
 }
 
+bool decode_add_reg_mr(Fetcher& fetcher)
+{
+    return decode_reg_mr(fetcher, "add");
+}
+
+bool decode_add_imm_to_rm(Fetcher& fetcher)
+{
+    return decode_imm_to_rm(fetcher, true, "add");
+}
+
+bool decode_add_imm_to_accum(Fetcher& fetcher)
+{
+    const uint8_t byte0 = fetcher.fetch_byte();
+    const bool W = byte0 & 1;
+    const int32_t imm = fetcher.fetch_byte_or_word_imm(W);
+    printf("add %s, %d\n", W ? "ax" : "al", imm);
+    return true;
+}
+
 bool decode(Fetcher& fetcher)
 {
     using Decoder = bool(*)(Fetcher&);
@@ -255,6 +298,9 @@ bool decode(Fetcher& fetcher)
         {0b1100011'0, uint8_t(~0x1), decode_move_imm_to_rm},
         {0b1010000'0, uint8_t(~0x1), decode_move_mem_to_accum},
         {0b1010001'0, uint8_t(~0x1), decode_move_accum_to_mem},
+        {0b000000'00, uint8_t(~0x3), decode_add_reg_mr},
+        {0b100000'00, uint8_t(~0x3), decode_add_imm_to_rm},
+        {0b0000010'0, uint8_t(~0x1), decode_add_imm_to_accum},
     };
     const uint8_t byte0 = fetcher.get_current_byte();
     Decoder decoder = nullptr;
